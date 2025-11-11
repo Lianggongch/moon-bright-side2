@@ -381,6 +381,12 @@
             return daysSinceNewMoon;
         }
 
+        // 检测是否为iOS设备
+        function isIOS() {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        }
+
         // 启动陀螺仪监听（每秒更新）
         function startGyroscope() {
             if (!window.DeviceOrientationEvent) {
@@ -394,12 +400,40 @@
                 return;
             }
 
-            // 对于Android和其他浏览器，先尝试直接监听
-            // 如果失败，会显示按钮让用户手动请求
+            // iOS设备：强制显示按钮，必须用户点击才能请求权限
+            if (isIOS() && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                document.getElementById('gyroButton').style.display = 'block';
+                document.getElementById('status').textContent = 'iOS设备：请点击按钮请求陀螺仪权限';
+                return;
+            }
+
+            // Android和其他浏览器：尝试直接监听
             try {
-                window.addEventListener('deviceorientation', handleOrientation);
-                document.getElementById('status').textContent = '陀螺仪监听已启动';
-                document.getElementById('gyroButton').style.display = 'none';
+                // 先添加一个测试监听器
+                const testHandler = (event) => {
+                    if (event.alpha !== null) {
+                        // 如果成功获取数据，移除测试监听器，添加正式监听器
+                        window.removeEventListener('deviceorientation', testHandler);
+                        window.addEventListener('deviceorientation', handleOrientation);
+                        document.getElementById('status').textContent = '陀螺仪监听已启动';
+                        document.getElementById('gyroButton').style.display = 'none';
+                        
+                        // 启动每秒更新
+                        setInterval(() => {
+                            updateVisibility();
+                        }, 1000);
+                    }
+                };
+                
+                window.addEventListener('deviceorientation', testHandler);
+                
+                // 如果3秒后还没有数据，显示按钮
+                setTimeout(() => {
+                    if (deviceAzimuth === null) {
+                        document.getElementById('gyroButton').style.display = 'block';
+                        document.getElementById('status').textContent = '请点击按钮激活陀螺仪';
+                    }
+                }, 3000);
             } catch (e) {
                 console.log('直接监听失败，需要用户交互:', e);
                 document.getElementById('gyroButton').style.display = 'block';
@@ -413,9 +447,11 @@
             }
         }
 
-        // 手动请求陀螺仪权限（用于电脑和安卓）
+        // 手动请求陀螺仪权限（用于iOS和需要用户交互的设备）
         function requestGyroscopePermission() {
             const button = document.getElementById('gyroButton');
+            const statusDiv = document.getElementById('status');
+            
             button.disabled = true;
             button.textContent = '请求中...';
 
@@ -430,44 +466,61 @@
             if (typeof DeviceOrientationEvent.requestPermission === 'function') {
                 DeviceOrientationEvent.requestPermission()
                     .then(response => {
-                        if (response == 'granted') {
+                        console.log('iOS权限响应:', response);
+                        if (response === 'granted') {
+                            // 权限已授予，添加监听器
                             window.addEventListener('deviceorientation', handleOrientation);
-                            document.getElementById('status').textContent = '陀螺仪已启用';
+                            statusDiv.textContent = '陀螺仪已启用，请移动设备';
                             button.style.display = 'none';
                             
                             // 启动每秒更新
-                            setInterval(() => {
-                                updateVisibility();
-                            }, 1000);
+                            if (!window.updateInterval) {
+                                window.updateInterval = setInterval(() => {
+                                    updateVisibility();
+                                    updateTimeToMoon();
+                                }, 1000);
+                            }
+                            
+                            // 提示用户移动设备
+                            setTimeout(() => {
+                                if (deviceAzimuth === null) {
+                                    statusDiv.textContent = '请移动设备以激活陀螺仪';
+                                }
+                            }, 2000);
                         } else {
-                            document.getElementById('status').textContent = '陀螺仪权限被拒绝';
+                            statusDiv.textContent = '陀螺仪权限被拒绝，请在设置中允许';
                             document.getElementById('deviceAngle').textContent = '设备角度: 权限被拒绝';
                             button.disabled = false;
-                            button.textContent = '请求陀螺仪权限';
+                            button.textContent = '重试';
                         }
                     })
                     .catch(error => {
                         console.error('请求陀螺仪权限错误:', error);
-                        document.getElementById('status').textContent = '请求陀螺仪权限失败';
+                        statusDiv.textContent = '请求陀螺仪权限失败: ' + error.message;
                         button.disabled = false;
-                        button.textContent = '请求陀螺仪权限';
+                        button.textContent = '重试';
                     });
             } else {
                 // Android和其他浏览器：需要用户交互才能监听
+                statusDiv.textContent = '正在激活陀螺仪，请移动设备...';
+                
                 // 创建一个一次性的事件监听器
                 const handleOrientationOnce = (event) => {
-                    if (event.alpha !== null) {
+                    if (event.alpha !== null && !isNaN(event.alpha)) {
                         deviceAzimuth = event.alpha;
-                        document.getElementById('status').textContent = '陀螺仪已启用';
+                        statusDiv.textContent = '陀螺仪已启用';
                         button.style.display = 'none';
                         
                         // 启动持续监听
                         window.addEventListener('deviceorientation', handleOrientation);
                         
                         // 启动每秒更新
-                        setInterval(() => {
-                            updateVisibility();
-                        }, 1000);
+                        if (!window.updateInterval) {
+                            window.updateInterval = setInterval(() => {
+                                updateVisibility();
+                                updateTimeToMoon();
+                            }, 1000);
+                        }
                         
                         // 移除一次性监听器
                         window.removeEventListener('deviceorientation', handleOrientationOnce);
@@ -479,7 +532,7 @@
                 // 如果5秒后还没有数据，提示用户
                 setTimeout(() => {
                     if (deviceAzimuth === null) {
-                        document.getElementById('status').textContent = '请移动设备以激活陀螺仪';
+                        statusDiv.textContent = '请移动设备以激活陀螺仪，或检查浏览器权限设置';
                         button.disabled = false;
                         button.textContent = '重试';
                     }
@@ -487,7 +540,7 @@
             }
 
             function handleOrientation(event) {
-                if (event.alpha !== null) {
+                if (event.alpha !== null && !isNaN(event.alpha)) {
                     deviceAzimuth = event.alpha; // 设备方位角
                 }
             }
@@ -577,11 +630,13 @@
             }
         }
 
-        // 每秒更新可见度和时间
-        setInterval(() => {
-            updateVisibility();
-            updateTimeToMoon();
-        }, 1000);
+        // 每秒更新可见度和时间（避免重复创建定时器）
+        if (!window.updateInterval) {
+            window.updateInterval = setInterval(() => {
+                updateVisibility();
+                updateTimeToMoon();
+            }, 1000);
+        }
 
         // 初始化
         init();
