@@ -344,8 +344,16 @@ export const Image = (): JSX.Element => {
   return (
     <div 
       ref={containerRef}
-      className="bg-x-0e-2148 w-full min-h-screen relative flex flex-col items-center justify-center overflow-hidden"
       style={{ 
+        backgroundColor: "var(--x-0e-2148)",
+        width: "100%",
+        minHeight: "100vh",
+        position: "relative",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden",
         aspectRatio: "0.46",
         minWidth: "394px",
         minHeight: "852px",
@@ -353,14 +361,21 @@ export const Image = (): JSX.Element => {
       }}
     >
       {/* 顶部：月相名称 */}
-      <header className="absolute top-0 left-0 right-0 flex justify-center items-center"
-        style={{
+      <header style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
           paddingTop: "min(3vw, 26px)",
         }}
       >
         <h1 
-          className="text-e-3d-095 text-center"
           style={{
+            color: "var(--e-3d-095)",
+            textAlign: "center",
             fontSize: "min(10vw, 64px)",
             fontWeight: "normal",
             letterSpacing: "0",
@@ -374,8 +389,8 @@ export const Image = (): JSX.Element => {
 
       {/* 中间：圆盘和月亮 */}
       <div 
-        className="absolute"
         style={{
+          position: "absolute",
           width: "min(80vw, 318px)",
           height: "min(80vw, 318px)",
           top: "50%",
@@ -386,8 +401,13 @@ export const Image = (): JSX.Element => {
       >
         {/* 圆盘背景（深蓝色主题色） */}
         <div 
-          className="absolute inset-0 rounded-full"
           style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: "50%",
             backgroundColor: "var(--x-0e-2148)",
             border: "none",
           }}
@@ -396,14 +416,30 @@ export const Image = (): JSX.Element => {
         {/* 圆盘刻度线（只在30度范围内显示，米黄色带高斯模糊） */}
         {isInRange && (
           <div
-            className="absolute inset-0 rounded-full pointer-events-none overflow-hidden"
             style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              borderRadius: "50%",
+              pointerEvents: "none",
+              overflow: "hidden",
               transform: `rotate(${diskRotation}deg)`,
               transition: "transform 0.1s ease-out",
             }}
           >
             {/* 使用SVG绘制30度范围的指示器 */}
-            <svg className="absolute inset-0 w-full h-full" style={{ filter: "blur(1px)" }}>
+            <svg style={{ 
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: "100%",
+              height: "100%",
+              filter: "blur(1px)" 
+            }}>
               <defs>
                 <linearGradient id="glow-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="var(--e-3d-095)" stopOpacity="0.5" />
@@ -433,16 +469,31 @@ export const Image = (): JSX.Element => {
         )}
 
         {/* 月亮图片（中心） */}
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
           <div 
-            className="rounded-full bg-e-3d-095"
             style={{
+              borderRadius: "50%",
+              backgroundColor: "var(--e-3d-095)",
               width: "min(25vw, 101px)",
               height: "min(25vw, 101px)",
             }}
           >
             <img
-              className="w-full h-full object-cover rounded-full"
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: "cover",
+                borderRadius: "50%",
+              }}
               alt="Moon"
               src={moonImage}
             />
@@ -452,48 +503,55 @@ export const Image = (): JSX.Element => {
 
       {/* 时间信息（月升/月落时间） */}
       <nav 
-        className="absolute flex items-center justify-center gap-[60px]"
         style={{
+          position: "absolute",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "60px",
           top: "min(67vh, 573px)",
           left: "50%",
           transform: "translateX(-50%)",
         }}
       >
-        <div className="text-e-3d-095 text-right"
-          style={{
-            fontSize: "min(3vw, 24px)",
-            fontFamily: "var(--text-font-family)",
-            fontWeight: "normal",
-          }}
-        >
+        <div style={{
+          color: "var(--e-3d-095)",
+          textAlign: "right",
+          fontSize: "min(3vw, 24px)",
+          fontFamily: "var(--text-font-family)",
+          fontWeight: "normal",
+        }}>
           {currentTime || '--'}
         </div>
 
-        <p className="text-e-3d-095 text-center blur-[0.5px]"
-          style={{
-            fontSize: "min(1.5vw, 12px)",
-            fontFamily: "var(--text-font-family)",
-            fontWeight: "normal",
-          }}
-        >
+        <p style={{
+          color: "var(--e-3d-095)",
+          textAlign: "center",
+          filter: "blur(0.5px)",
+          fontSize: "min(1.5vw, 12px)",
+          fontFamily: "var(--text-font-family)",
+          fontWeight: "normal",
+        }}>
           {timeToMoon.label ? `${timeToMoon.label} ${timeToMoon.time}.` : ''}
         </p>
 
-        <div className="text-e-3d-095 text-left"
-          style={{
-            fontSize: "min(3vw, 24px)",
-            fontFamily: "var(--text-font-family)",
-            fontWeight: "normal",
-          }}
-        >
+        <div style={{
+          color: "var(--e-3d-095)",
+          textAlign: "left",
+          fontSize: "min(3vw, 24px)",
+          fontFamily: "var(--text-font-family)",
+          fontWeight: "normal",
+        }}>
           {currentTime || '--'}
         </div>
       </nav>
 
       {/* 可见度百分比和方向 */}
       <section 
-        className="absolute flex items-center"
         style={{
+          position: "absolute",
+          display: "flex",
+          alignItems: "center",
           top: "min(70vh, 600px)",
           left: "50%",
           transform: "translateX(-50%)",
@@ -503,8 +561,11 @@ export const Image = (): JSX.Element => {
       >
         {/* 百分比（大号，左侧） */}
         <div 
-          className="text-e-3d-095 flex items-center justify-center"
           style={{
+            color: "var(--e-3d-095)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
             fontSize: "min(12vw, 96px)",
             fontFamily: "var(--text-font-family)",
             fontWeight: "normal",
@@ -516,15 +577,17 @@ export const Image = (): JSX.Element => {
         </div>
 
         {/* 百分号和方向（右侧，居右对齐） */}
-        <div className="flex flex-col items-end justify-center"
-          style={{
-            width: "min(30vw, 137px)",
-            marginLeft: "auto",
-          }}
-        >
+        <div style={{
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-end",
+          justifyContent: "center",
+          width: "min(30vw, 137px)",
+          marginLeft: "auto",
+        }}>
           <div 
-            className="text-e-3d-095"
             style={{
+              color: "var(--e-3d-095)",
               fontSize: "min(2.5vw, 20px)",
               fontFamily: "var(--text-font-family)",
               fontWeight: "normal",
@@ -534,8 +597,9 @@ export const Image = (): JSX.Element => {
             %
           </div>
           <p 
-            className="text-e-3d-095 text-right"
             style={{
+              color: "var(--e-3d-095)",
+              textAlign: "right",
               fontSize: "min(4vw, 32px)",
               fontFamily: "var(--text-font-family)",
               fontWeight: "normal",
@@ -551,8 +615,10 @@ export const Image = (): JSX.Element => {
 
       {/* 地点和天气 */}
       <div 
-        className="absolute text-e-3d-095 text-center"
         style={{
+          position: "absolute",
+          color: "var(--e-3d-095)",
+          textAlign: "center",
           top: "min(75vh, 640px)",
           left: "50%",
           transform: "translateX(-50%)",
@@ -567,8 +633,15 @@ export const Image = (): JSX.Element => {
 
       {/* 底部固定文字 */}
       <footer 
-        className="absolute bottom-0 left-0 right-0 flex items-center justify-center text-white"
         style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "white",
           paddingBottom: "min(2vw, 20px)",
           fontSize: "min(1.5vw, 12px)",
           fontFamily: "var(--text-font-family)",
