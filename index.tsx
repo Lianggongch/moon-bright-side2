@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
-import f01f5e2a09e8239e70d6551f2b052 from "./4385f01f5e2a09e8239e70d6551f2b05-2.png";
+import { useState, useEffect, useRef } from "react";
+// 图片文件（如果不存在，使用占位符）
+const moonImage = "./4385f01f5e2a09e8239e70d6551f2b05-2.png";
 import { calculateMoonIllumination, getMoonPhaseNameFromDate } from "./moonPhaseCalculator";
 
 // 月亮名称枚举
@@ -27,8 +28,8 @@ export const Image = (): JSX.Element => {
   const [moonSet, setMoonSet] = useState<string>(""); // 月落时间（HH:MM格式）
   const [location, setLocation] = useState<string>("获取位置中...");
   const [weather, setWeather] = useState<string>(""); // 天气描述
-  const [latitude, setLatitude] = useState<number | null>(null);
-  const [longitude, setLongitude] = useState<number | null>(null);
+  const [_latitude, setLatitude] = useState<number | null>(null);
+  const [_longitude, setLongitude] = useState<number | null>(null);
   const [moonPhase, setMoonPhase] = useState<MoonPhase>(MoonPhase.FULL_MOON);
   const [moonIllumination, setMoonIllumination] = useState<number>(1.0); // 月相照明度（0.0-1.0）
   const [moonVisibility, setMoonVisibility] = useState<number>(0); // 月亮可见比例（0-100%）
@@ -82,7 +83,6 @@ export const Image = (): JSX.Element => {
         const address = data.address;
         const city = address.city || address.town || address.village || address.county || '';
         const state = address.state || address.province || '';
-        const country = address.country || '';
         
         // 格式化地点：城市,省/州
         let locationStr = city;
@@ -444,7 +444,7 @@ export const Image = (): JSX.Element => {
             <img
               className="w-full h-full object-cover rounded-full"
               alt="Moon"
-              src={f01f5e2a09e8239e70d6551f2b052}
+              src={moonImage}
             />
           </div>
         </div>

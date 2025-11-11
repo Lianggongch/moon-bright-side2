@@ -46,7 +46,6 @@ function toJulianDay(date: Date): number {
   let a, b;
   if (month <= 2) {
     const yearAdj = year - 1;
-    const monthAdj = month + 12;
     a = Math.floor(yearAdj / 100);
     b = 2 - a + Math.floor(a / 4);
   } else {
