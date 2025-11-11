@@ -23,9 +23,10 @@ export const Image = (): JSX.Element => {
   
   const [moonAngle, setMoonAngle] = useState<number>(0); // 月亮方向角度（0-360度，方位角azimuth）
   const [moonElevation, setMoonElevation] = useState<number>(0); // 月亮高度角（-90到90度）
-  const [moonRise, setMoonRise] = useState<string>(""); // 月升时间
-  const [moonSet, setMoonSet] = useState<string>(""); // 月落时间
+  const [moonRise, setMoonRise] = useState<string>(""); // 月升时间（HH:MM格式）
+  const [moonSet, setMoonSet] = useState<string>(""); // 月落时间（HH:MM格式）
   const [location, setLocation] = useState<string>("获取位置中...");
+  const [weather, setWeather] = useState<string>(""); // 天气描述
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [moonPhase, setMoonPhase] = useState<MoonPhase>(MoonPhase.FULL_MOON);
@@ -71,37 +72,34 @@ export const Image = (): JSX.Element => {
   // 逆地理编码：将坐标转换为城市名称
   const getCityName = async (lat: number, lon: number) => {
     try {
-      // 使用Nominatim API（OpenStreetMap的免费逆地理编码服务）
       const nominatimUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10&addressdetails=1`;
-      
       const response = await fetch(nominatimUrl, {
-        headers: {
-          'User-Agent': 'MoonPhaseApp/1.0'
-        }
+        headers: { 'User-Agent': 'MoonPhaseApp/1.0' }
       });
-      
       const data = await response.json();
       
       if (data && data.address) {
         const address = data.address;
-        // 提取城市名称（优先使用city，如果没有则使用town或village）
         const city = address.city || address.town || address.village || address.county || '';
+        const state = address.state || address.province || '';
         const country = address.country || '';
         
-        if (city) {
-          setLocation(city + (country ? `, ${country}` : ''));
+        // 格式化地点：城市,省/州
+        let locationStr = city;
+        if (state && state !== city) {
+          locationStr += state.includes(city) ? '' : `,${state}`;
         }
+        setLocation(locationStr);
       }
     } catch (error) {
       console.error("逆地理编码错误:", error);
-      // 如果失败，保持显示坐标
     }
   };
 
   // 调用IPGeolocation Astronomy API和Visual Crossing Weather API
   const fetchMoonAndWeatherData = async (lat: number, lon: number) => {
     const date = new Date().toISOString().split('T')[0];
-    const currentTime = new Date(); // 当前UTC时间
+    const currentTime = new Date();
 
     try {
       // 1. 调用IPGeolocation Astronomy API获取月亮位置
@@ -109,11 +107,19 @@ export const Image = (): JSX.Element => {
       const astronomyResponse = await fetch(astronomyUrl);
       const astronomyData = await astronomyResponse.json();
       
-      if (astronomyData.moon && astronomyData.moon.azimuth !== undefined) {
-        setMoonAngle(astronomyData.moon.azimuth); // 月亮方位角
-        setMoonElevation(astronomyData.moon.elevation || 0); // 月亮高度角
-        
-        // 获取月升月落时间
+      // API返回的数据结构：字段直接在根对象中
+      if (astronomyData.moon_azimuth !== undefined) {
+        setMoonAngle(astronomyData.moon_azimuth);
+        setMoonElevation(astronomyData.moon_altitude || 0);
+        if (astronomyData.moonrise) {
+          setMoonRise(astronomyData.moonrise);
+        }
+        if (astronomyData.moonset) {
+          setMoonSet(astronomyData.moonset);
+        }
+      } else if (astronomyData.moon && astronomyData.moon.azimuth !== undefined) {
+        setMoonAngle(astronomyData.moon.azimuth);
+        setMoonElevation(astronomyData.moon.elevation || 0);
         if (astronomyData.moon.moonrise) {
           setMoonRise(astronomyData.moon.moonrise);
         }
@@ -122,15 +128,11 @@ export const Image = (): JSX.Element => {
         }
       }
 
-      // 2. 使用精确的天文学算法计算月相（基于UTC时间）
-      // 月相是全球统一的，与地理位置无关，只与时间有关
+      // 2. 计算月相
       const calculatedIllumination = calculateMoonIllumination(currentTime);
       const phaseName = getMoonPhaseNameFromDate(currentTime);
-      
-      // 存储精确的月相照明度（用于可见度计算）
       setMoonIllumination(calculatedIllumination);
       
-      // 将字符串转换为MoonPhase枚举
       const phaseMap: { [key: string]: MoonPhase } = {
         "New Moon": MoonPhase.NEW_MOON,
         "Waxing Crescent": MoonPhase.WAXING_CRESCENT,
@@ -145,111 +147,159 @@ export const Image = (): JSX.Element => {
       if (phaseMap[phaseName]) {
         setMoonPhase(phaseMap[phaseName]);
       }
-      
-      console.log(`精确月相计算: ${phaseName}, 照明度: ${(calculatedIllumination * 100).toFixed(2)}%`);
 
-      // 3. 调用Visual Crossing Weather API获取天气（云量）
+      // 3. 调用Visual Crossing Weather API获取天气
       const weatherUrl = `https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/${lat},${lon}/${date}?key=${VISUALCROSSING_API_KEY}&unitGroup=metric&include=current`;
       const weatherResponse = await fetch(weatherUrl);
       const weatherData = await weatherResponse.json();
       
-      if (weatherData.currentConditions && weatherData.currentConditions.cloudcover !== undefined) {
-        setCloudCover(weatherData.currentConditions.cloudcover); // 云量百分比
+      if (weatherData.currentConditions) {
+        if (weatherData.currentConditions.cloudcover !== undefined) {
+          setCloudCover(weatherData.currentConditions.cloudcover);
+        }
+        // 获取天气描述
+        const conditions = weatherData.currentConditions.conditions || '';
+        setWeather(conditions.toLowerCase() || 'clear');
       }
     } catch (error) {
       console.error("API Error:", error);
     }
   };
 
-  /**
-   * 计算月亮可见度百分比（0-100%）
-   * 
-   * 逻辑关系：
-   * 1. 水平方向对齐度：设备指向与月亮方向的水平夹角（0-30度范围内有效）
-   * 2. 垂直方向可见度：月亮高度角（必须>0，越高越好）
-   * 3. 天气影响：云量遮挡（0-100%，云量越少越好）
-   * 4. 月相影响：满月=100%，其他月相按比例降低
-   * 
-   * 最终可见度 = 水平对齐度 × 高度角因子 × 云量因子 × 月相因子
-   */
+  // 计算月亮可见度百分比
   const calculateMoonVisibility = (): number => {
-    // 如果没有设备方向数据，返回0
-    if (deviceOrientation.alpha === null) {
-      return 0;
-    }
+    if (deviceOrientation.alpha === null) return 0;
 
-    // ========== 1. 计算水平方向对齐度（方位角） ==========
-    const deviceAzimuth = deviceOrientation.alpha; // 设备指向的方位角（0-360度）
+    const deviceAzimuth = deviceOrientation.alpha;
     let horizontalAngleDiff = Math.abs(deviceAzimuth - moonAngle);
     
-    // 处理360度边界情况（例如：359度和1度的夹角应该是2度，不是358度）
     if (horizontalAngleDiff > 180) {
       horizontalAngleDiff = 360 - horizontalAngleDiff;
     }
     
-    // 如果设备指向不在月亮方向60度范围内（左右各30度），完全不可见
-    if (horizontalAngleDiff > 30) {
+    if (horizontalAngleDiff > 30 || moonElevation <= 0) {
       return 0;
     }
     
-    // 水平对齐度：角度越小，对齐度越高（0度=100%，30度=0%）
-    // 使用平滑曲线（余弦函数）使过渡更自然
     const horizontalAlignment = Math.cos((horizontalAngleDiff / 30) * (Math.PI / 2)) * 100;
-    
-    // ========== 2. 计算垂直方向可见度（高度角） ==========
-    // 如果月亮在地平线以下（高度角<=0），完全不可见
-    if (moonElevation <= 0) {
-      return 0;
-    }
-    
-    // 高度角因子：高度角越高，可见度越好
-    // 0度=0%，90度=100%，使用平滑曲线
     const elevationFactor = Math.sin((moonElevation / 90) * (Math.PI / 2)) * 100;
-    
-    // ========== 3. 计算天气影响（云量） ==========
-    // 云量因子：云量越少，可见度越好
-    // 0%云量=100%可见度，100%云量=0%可见度
     const cloudFactor = 100 - cloudCover;
-    
-    // ========== 4. 计算月相影响 ==========
-    // 使用精确计算的月相照明度（0.0-1.0），转换为百分比（0-100%）
-    // 这是基于天文学算法的精确值，而不是简单的枚举映射
     const moonPhaseFactor = moonIllumination * 100;
     
-    // ========== 5. 综合计算最终可见度 ==========
-    // 最终可见度 = 水平对齐度 × 高度角因子 × 云量因子 × 月相因子 / (100^3)
-    // 因为每个因子都是0-100的百分比，所以需要除以100^3来归一化
     const finalVisibility = (horizontalAlignment * elevationFactor * cloudFactor * moonPhaseFactor) / (100 * 100 * 100);
-    
-    // 确保结果在0-100范围内，并四舍五入
     return Math.round(Math.min(100, Math.max(0, finalVisibility)));
   };
 
-  // ========== 功能流程确认 ==========
-  // 1. 手机登录界面后，自动请求：
-  //    - GPS位置权限（navigator.geolocation）
-  //    - 陀螺仪权限（DeviceOrientationEvent）
-  // 2. 获取到GPS后，调用API获取：
-  //    - 云量（cloudCover）- 从Visual Crossing Weather API
-  //    - 月亮方位角（moonAngle/azimuth）- 从IPGeolocation Astronomy API
-  //    - 月亮高度角（moonElevation）- 从IPGeolocation Astronomy API
-  //    - 月升月落时间（moonrise/moonset）- 从IPGeolocation Astronomy API
-  // 3. 陀螺仪数据用于计算：
-  //    - 设备指向方向（deviceOrientation.alpha）
-  //    - 设备与月亮方向的差值（angleDiff）
-  // 4. 综合计算月亮可见度百分比
+  // 将方位角转换为方向名称（简写）
+  const getDirectionName = (azimuth: number): string => {
+    const directions = [
+      { name: "N", short: "N", angle: 0 },      // 北
+      { name: "NE", short: "NE", angle: 45 },   // 东北
+      { name: "E", short: "E", angle: 90 },     // 东
+      { name: "SE", short: "SE", angle: 135 },  // 东南
+      { name: "S", short: "S", angle: 180 },    // 南
+      { name: "SW", short: "SW", angle: 225 },  // 西南
+      { name: "W", short: "W", angle: 270 },    // 西
+      { name: "NW", short: "NW", angle: 315 },  // 西北
+    ];
+    
+    // 找到最接近的方向
+    let closest = directions[0];
+    let minDiff = Math.abs(azimuth - directions[0].angle);
+    
+    for (const dir of directions) {
+      const diff = Math.min(Math.abs(azimuth - dir.angle), Math.abs(azimuth - dir.angle + 360), Math.abs(azimuth - dir.angle - 360));
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = dir;
+      }
+    }
+    
+    return closest.short;
+  };
 
+  // 计算距离月升/月落的时间
+  const getTimeToMoon = (): { label: string; time: string } => {
+    const now = new Date();
+    let timeToShow: Date | null = null;
+    let label = '';
+
+    // 解析时间字符串
+    const parseTime = (timeStr: string): Date => {
+      const parts = timeStr.split(':');
+      const time = new Date(now);
+      time.setHours(parseInt(parts[0], 10), parseInt(parts[1], 10), 0, 0);
+      if (time < now) {
+        time.setDate(time.getDate() + 1);
+      }
+      return time;
+    };
+
+    if (moonElevation > 0) {
+      // 月亮在地平线以上，显示距离月落的时间
+      if (moonSet) {
+        const setTime = parseTime(moonSet);
+        if (setTime > now) {
+          timeToShow = setTime;
+          label = 'The moon will set in';
+        } else {
+          const tomorrowSet = new Date(setTime);
+          tomorrowSet.setDate(tomorrowSet.getDate() + 1);
+          timeToShow = tomorrowSet;
+          label = 'The moon will set in';
+        }
+      }
+    } else {
+      // 月亮在地平线以下，显示距离月升的时间
+      if (moonRise) {
+        const riseTime = parseTime(moonRise);
+        if (riseTime > now) {
+          timeToShow = riseTime;
+          label = 'The moon will rise in';
+        } else {
+          const tomorrowRise = new Date(riseTime);
+          tomorrowRise.setDate(tomorrowRise.getDate() + 1);
+          timeToShow = tomorrowRise;
+          label = 'The moon will rise in';
+        }
+      }
+    }
+
+    if (timeToShow) {
+      const diff = timeToShow.getTime() - now.getTime();
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      
+      if (hours > 0) {
+        return { label, time: `${hours} hour${hours > 1 ? 's' : ''}` };
+      } else {
+        return { label, time: `${minutes} minute${minutes > 1 ? 's' : ''}` };
+      }
+    }
+
+    return { label: '', time: '' };
+  };
+
+  // 获取当前显示的时间（月升或月落）
+  const getCurrentTime = (): string => {
+    if (moonElevation > 0 && moonSet) {
+      return moonSet; // 月亮在地平线以上，显示月落时间
+    } else if (moonRise) {
+      return moonRise; // 月亮在地平线以下，显示月升时间
+    }
+    return '';
+  };
+
+  // 陀螺仪监听
   useEffect(() => {
-    // 请求设备方向权限并监听陀螺仪
     const handleOrientation = (event: DeviceOrientationEvent) => {
       setDeviceOrientation({
-        alpha: event.alpha, // 绕Z轴旋转（0-360度）- 设备指向的方位角
-        beta: event.beta,   // 绕X轴旋转（-180到180度）- 设备俯仰角
-        gamma: event.gamma, // 绕Y轴旋转（-90到90度）- 设备横滚角
+        alpha: event.alpha,
+        beta: event.beta,
+        gamma: event.gamma,
       });
     };
 
-    // 监听设备方向变化
     if (window.DeviceOrientationEvent) {
       window.addEventListener("deviceorientation", handleOrientation);
     }
@@ -261,140 +311,273 @@ export const Image = (): JSX.Element => {
     };
   }, []);
 
-  // 更新月亮可见比例（当任何相关数据变化时重新计算）
+  // 更新可见度
   useEffect(() => {
     const visibility = calculateMoonVisibility();
     setMoonVisibility(visibility);
   }, [deviceOrientation, moonAngle, moonElevation, cloudCover, moonIllumination]);
 
-  // 计算圆盘应该显示的角度范围
-  // 圆盘只在月亮方向60度范围内显示（左右各30度）
+  // 计算圆盘旋转角度（只在30度范围内）
   const getDiskRotation = (): number => {
     if (deviceOrientation.alpha === null) return 0;
     
-    // 计算设备指向方向与月亮方向的夹角
-    const deviceDirection = deviceOrientation.alpha; // 设备指向的方向
+    const deviceDirection = deviceOrientation.alpha;
     let angleDiff = Math.abs(deviceDirection - moonAngle);
     
-    // 处理360度边界情况
     if (angleDiff > 180) {
       angleDiff = 360 - angleDiff;
     }
     
-    // 如果设备指向在月亮方向60度范围内（左右各30度）
     if (angleDiff <= 30) {
-      // 计算圆盘需要旋转的角度，使其以月亮为中心
-      const rotationAngle = deviceDirection - moonAngle;
-      return rotationAngle;
+      return deviceDirection - moonAngle;
     }
     
-    return 0; // 不在范围内，不显示圆盘
+    return 0;
   };
 
   const diskRotation = getDiskRotation();
   const isInRange = Math.abs(diskRotation) <= 30;
+  const timeToMoon = getTimeToMoon();
+  const currentTime = getCurrentTime();
+  const direction = getDirectionName(moonAngle);
 
   return (
     <div 
       ref={containerRef}
-      className="w-full min-h-screen relative flex flex-col items-center justify-center bg-black overflow-hidden"
+      className="bg-x-0e-2148 w-full min-h-screen relative flex flex-col items-center justify-center overflow-hidden"
       style={{ 
-        maxWidth: "100vw",
-        height: "100vh",
-        padding: "0",
+        aspectRatio: "0.46",
+        minWidth: "394px",
+        minHeight: "852px",
         fontFamily: "var(--text-font-family)",
       }}
     >
-      {/* 顶部：月亮名称 */}
-      <div 
-        className="absolute top-0 left-0 right-0 flex justify-center items-center"
+      {/* 顶部：月相名称 */}
+      <header className="absolute top-0 left-0 right-0 flex justify-center items-center"
         style={{
-          paddingTop: "min(8vw, 40px)",
-          paddingBottom: "min(4vw, 20px)",
+          paddingTop: "min(3vw, 26px)",
         }}
       >
         <h1 
-          className="text-white text-center"
+          className="text-e-3d-095 text-center"
           style={{
-            fontSize: "min(6vw, 24px)",
-            fontWeight: 500,
-            letterSpacing: "0.05em",
+            fontSize: "min(10vw, 64px)",
+            fontWeight: "normal",
+            letterSpacing: "0",
+            lineHeight: "1.74",
+            fontFamily: "var(--text-font-family)",
           }}
         >
           {moonPhase}
         </h1>
-      </div>
+      </header>
 
-      {/* 中间：月亮图片 - 响应式居中 */}
+      {/* 中间：圆盘和月亮 */}
       <div 
         className="absolute"
         style={{
-          width: "min(88vw, 318px)",
-          height: "min(88vw, 318px)",
+          width: "min(80vw, 318px)",
+          height: "min(80vw, 318px)",
           top: "50%",
           left: "50%",
           transform: "translate(-50%, -50%)",
+          marginTop: "min(6vw, 51px)",
         }}
       >
-        <img
-          className="w-full h-full object-cover rounded-full"
-          alt="Moon"
-          src={f01f5e2a09e8239e70d6551f2b052}
+        {/* 圆盘背景（深蓝色主题色） */}
+        <div 
+          className="absolute inset-0 rounded-full"
+          style={{
+            backgroundColor: "var(--x-0e-2148)",
+            border: "none",
+          }}
         />
         
-        {/* 圆盘 - 只在月亮方向60度范围内显示，以月亮为中心滑动 */}
+        {/* 圆盘刻度线（只在30度范围内显示，米黄色带高斯模糊） */}
         {isInRange && (
           <div
-            className="absolute inset-0 rounded-full border-2 border-white/30 pointer-events-none"
+            className="absolute inset-0 rounded-full pointer-events-none overflow-hidden"
             style={{
               transform: `rotate(${diskRotation}deg)`,
               transition: "transform 0.1s ease-out",
-              boxShadow: "0 0 20px rgba(255, 255, 255, 0.2)",
             }}
           >
-            {/* 圆盘可以添加更多视觉效果 */}
-            <div 
-              className="absolute inset-0 rounded-full"
-              style={{
-                border: "1px solid rgba(255, 255, 255, 0.4)",
-                transform: "scale(1.1)",
-              }}
-            />
+            {/* 使用SVG绘制30度范围的指示器 */}
+            <svg className="absolute inset-0 w-full h-full" style={{ filter: "blur(1px)" }}>
+              <defs>
+                <linearGradient id="glow-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="var(--e-3d-095)" stopOpacity="0.5" />
+                  <stop offset="50%" stopColor="var(--e-3d-095)" stopOpacity="0.7" />
+                  <stop offset="100%" stopColor="var(--e-3d-095)" stopOpacity="0.5" />
+                </linearGradient>
+              </defs>
+              {/* 绘制30度范围的扇形（以月亮为中心） */}
+              <path
+                d={`M 50% 50% L ${50 + 47 * Math.cos((moonAngle - 15) * Math.PI / 180)}% ${50 - 47 * Math.sin((moonAngle - 15) * Math.PI / 180)}% A 47% 47% 0 0 1 ${50 + 47 * Math.cos((moonAngle + 15) * Math.PI / 180)}% ${50 - 47 * Math.sin((moonAngle + 15) * Math.PI / 180)}% Z`}
+                fill="url(#glow-gradient)"
+                opacity="0.4"
+              />
+              {/* 中心指示线 */}
+              <line
+                x1="50%"
+                y1="50%"
+                x2={`${50 + 47 * Math.cos(moonAngle * Math.PI / 180)}%`}
+                y2={`${50 - 47 * Math.sin(moonAngle * Math.PI / 180)}%`}
+                stroke="var(--e-3d-095)"
+                strokeWidth="2"
+                opacity="0.7"
+                style={{ filter: "blur(0.5px)" }}
+              />
+            </svg>
           </div>
         )}
+
+        {/* 月亮图片（中心） */}
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div 
+            className="rounded-full bg-e-3d-095"
+            style={{
+              width: "min(25vw, 101px)",
+              height: "min(25vw, 101px)",
+            }}
+          >
+            <img
+              className="w-full h-full object-cover rounded-full"
+              alt="Moon"
+              src={f01f5e2a09e8239e70d6551f2b052}
+            />
+          </div>
+        </div>
       </div>
 
-      {/* 底部：地点和可见比例 */}
-      <div 
-        className="absolute bottom-0 left-0 right-0 flex flex-col justify-center items-center"
+      {/* 时间信息（月升/月落时间） */}
+      <nav 
+        className="absolute flex items-center justify-center gap-[60px]"
         style={{
-          paddingBottom: "min(8vw, 40px)",
-          paddingTop: "min(4vw, 20px)",
+          top: "min(67vh, 573px)",
+          left: "50%",
+          transform: "translateX(-50%)",
         }}
       >
-        {/* 地点 */}
-        <div 
-          className="text-white text-center mb-2"
+        <div className="text-e-3d-095 text-right"
           style={{
-            fontSize: "min(4vw, 16px)",
-            fontWeight: 400,
-            opacity: 0.8,
+            fontSize: "min(3vw, 24px)",
+            fontFamily: "var(--text-font-family)",
+            fontWeight: "normal",
           }}
         >
-          {location}
+          {currentTime || '--'}
         </div>
-        
-        {/* 月亮可见比例 */}
-        <div 
-          className="text-white text-center"
+
+        <p className="text-e-3d-095 text-center blur-[0.5px]"
           style={{
-            fontSize: "min(5vw, 20px)",
-            fontWeight: 500,
+            fontSize: "min(1.5vw, 12px)",
+            fontFamily: "var(--text-font-family)",
+            fontWeight: "normal",
           }}
         >
-          {moonVisibility}%
+          {timeToMoon.label ? `${timeToMoon.label} ${timeToMoon.time}.` : ''}
+        </p>
+
+        <div className="text-e-3d-095 text-left"
+          style={{
+            fontSize: "min(3vw, 24px)",
+            fontFamily: "var(--text-font-family)",
+            fontWeight: "normal",
+          }}
+        >
+          {currentTime || '--'}
         </div>
+      </nav>
+
+      {/* 可见度百分比和方向 */}
+      <section 
+        className="absolute flex items-center"
+        style={{
+          top: "min(70vh, 600px)",
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: "min(60vw, 234px)",
+          height: "min(20vh, 167px)",
+        }}
+      >
+        {/* 百分比（大号，左侧） */}
+        <div 
+          className="text-e-3d-095 flex items-center justify-center"
+          style={{
+            fontSize: "min(12vw, 96px)",
+            fontFamily: "var(--text-font-family)",
+            fontWeight: "normal",
+            lineHeight: "167px",
+            width: "min(30vw, 97px)",
+          }}
+        >
+          {moonVisibility}
+        </div>
+
+        {/* 百分号和方向（右侧，居右对齐） */}
+        <div className="flex flex-col items-end justify-center"
+          style={{
+            width: "min(30vw, 137px)",
+            marginLeft: "auto",
+          }}
+        >
+          <div 
+            className="text-e-3d-095"
+            style={{
+              fontSize: "min(2.5vw, 20px)",
+              fontFamily: "var(--text-font-family)",
+              fontWeight: "normal",
+              lineHeight: "34.8px",
+            }}
+          >
+            %
+          </div>
+          <p 
+            className="text-e-3d-095 text-right"
+            style={{
+              fontSize: "min(4vw, 32px)",
+              fontFamily: "var(--text-font-family)",
+              fontWeight: "normal",
+              lineHeight: "43.5px",
+            }}
+          >
+            can be seen
+            <br />
+            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; at {direction}
+          </p>
+        </div>
+      </section>
+
+      {/* 地点和天气 */}
+      <div 
+        className="absolute text-e-3d-095 text-center"
+        style={{
+          top: "min(75vh, 640px)",
+          left: "50%",
+          transform: "translateX(-50%)",
+          fontSize: "min(2.5vw, 20px)",
+          fontFamily: "var(--text-font-family)",
+          fontWeight: "normal",
+          lineHeight: "27.2px",
+        }}
+      >
+        {location}{weather ? `,${weather}` : ''}
       </div>
+
+      {/* 底部固定文字 */}
+      <footer 
+        className="absolute bottom-0 left-0 right-0 flex items-center justify-center text-white"
+        style={{
+          paddingBottom: "min(2vw, 20px)",
+          fontSize: "min(1.5vw, 12px)",
+          fontFamily: "var(--text-font-family)",
+          fontWeight: "normal",
+          lineHeight: "normal",
+        }}
+      >
+        We shall meet in the place where there is no darkness
+      </footer>
     </div>
   );
 };
