@@ -367,6 +367,8 @@
         
         let currentLat = 0;
         let currentLng = 0;
+        let deviceHeading = 0; // Device compass heading for visibility calculation
+        let cloudCoverage = 25; // Cloud coverage percentage (0-100)
         
         // Quotes - Only one English quote as requested
         const quotes = [
@@ -601,36 +603,20 @@
         // Geolocation
         function initGeo() {
             if ("geolocation" in navigator) {
-                // Add timeout to geolocation
-                const geoOptions = {
-                    enableHighAccuracy: false, // Faster, less accurate
-                    timeout: 15000, // 15 second timeout
-                    maximumAge: 0 // Always get fresh location
-                };
-                
-                console.log('Requesting geolocation permission...');
-                
-                // Try to get position
                 navigator.geolocation.getCurrentPosition(async (position) => {
-                    console.log('Geolocation granted:', position.coords);
                     currentLat = position.coords.latitude;
                     currentLng = position.coords.longitude;
                     
-                    // Update location text immediately
-                    locationEl.innerText = "Loading...";
-                    
-                    // Fetch city name (don't block on this)
-                    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLng}&zoom=10&accept-language=en`, { 
-                        headers: { 'User-Agent': 'MoonApp/1.0' }
-                    })
-                    .then(resp => resp.json())
-                    .then(data => {
+                    try {
+                        // Force English language response
+                        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLng}&zoom=10&accept-language=en`;
+                        const resp = await fetch(url, { headers: { 'User-Agent': 'MoonApp/1.0' } });
+                        const data = await resp.json();
                         const city = data.address?.city || data.address?.town || data.address?.village || "Unknown Location";
                         locationEl.innerText = `${city}`;
-                    })
-                    .catch(e => {
+                    } catch (e) {
                         locationEl.innerText = `${currentLat.toFixed(2)}, ${currentLng.toFixed(2)}`;
-                    });
+                    }
 
                     // Estimate cloud coverage (no API needed)
                     estimateCloudCoverage();
@@ -646,30 +632,8 @@
                     }, 600000); // 10 minutes
                     
                 }, (err) => {
-                    console.warn('Geolocation error:', err.code, err.message);
-                    
-                    // Show user-friendly error message
-                    if (err.code === 1) {
-                        locationEl.innerText = "Tap to enable location";
-                        // Make location text clickable to retry
-                        locationEl.style.cursor = 'pointer';
-                        locationEl.style.textDecoration = 'underline';
-                        locationEl.onclick = () => {
-                            locationEl.innerText = "Requesting...";
-                            initGeo();
-                        };
-                    } else if (err.code === 2) {
-                        locationEl.innerText = "Location unavailable";
-                    } else if (err.code === 3) {
-                        locationEl.innerText = "Location timeout - Tap to retry";
-                        locationEl.style.cursor = 'pointer';
-                        locationEl.onclick = () => {
-                            locationEl.innerText = "Requesting...";
-                            initGeo();
-                        };
-                    } else {
-                        locationEl.innerText = "Location Access Denied";
-                    }
+                    locationEl.innerText = "Location Access Denied";
+                    console.warn(err);
                     
                     // Estimate cloud coverage even without location
                     estimateCloudCoverage();
@@ -680,7 +644,7 @@
                         estimateCloudCoverage();
                         updateMoonData();
                     }, 600000);
-                }, geoOptions);
+                });
             } else {
                 locationEl.innerText = "Geolocation not supported";
                 // Estimate cloud coverage
@@ -767,36 +731,8 @@
         // Update moon data immediately (illumination works without location)
         updateMoonData();
         
-        // Initialize geolocation
-        // Note: GitHub Pages (HTTPS) should allow geolocation, but some browsers
-        // require user interaction. We'll try both immediate and on-interaction.
-        
-        // Check if we're on HTTPS (required for geolocation on most browsers)
-        const isSecure = window.location.protocol === 'https:' || 
-                        window.location.hostname === 'localhost' || 
-                        window.location.hostname === '127.0.0.1';
-        
-        if (!isSecure) {
-            console.warn('Geolocation requires HTTPS. Current protocol:', window.location.protocol);
-            locationEl.innerText = "HTTPS required for location";
-        } else {
-            // Try immediately (works on HTTPS)
-            initGeo();
-            
-            // Also try on first user interaction (fallback for strict browsers)
-            let geoRequested = false;
-            const requestGeoOnInteraction = () => {
-                if (!geoRequested && currentLat === 0 && currentLng === 0) {
-                    geoRequested = true;
-                    console.log('User interaction detected, requesting geolocation...');
-                    initGeo();
-                }
-            };
-            
-            // Try on various user interactions
-            document.addEventListener('click', requestGeoOnInteraction, { once: true });
-            document.addEventListener('touchstart', requestGeoOnInteraction, { once: true });
-        }
+        // Initialize geolocation - simple direct call like the working version
+        initGeo();
         // Update visibility and phase every 5 seconds for real-time feel
         setInterval(() => {
             const now = new Date();
