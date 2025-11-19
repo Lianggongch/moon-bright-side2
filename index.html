@@ -560,74 +560,42 @@
             }
         }
 
-        // Fetch weather data (cloud coverage)
-        async function fetchWeatherData(lat, lng) {
-            try {
-                // Using OpenWeatherMap API (free tier)
-                // Note: You'll need to get a free API key from https://openweathermap.org/api
-                // For now, using a demo approach - you can replace with your API key
-                const apiKey = 'demo'; // Replace with your OpenWeatherMap API key
-                const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lng}&appid=${apiKey}&units=metric`;
-                
-                const resp = await fetch(url);
-                if (!resp.ok) {
-                    throw new Error('Weather API error');
-                }
-                const data = await resp.json();
-                
-                // Extract cloud coverage percentage
-                cloudCoverage = data.clouds?.all || 0; // 0-100
-                
-                return cloudCoverage;
-            } catch (e) {
-                console.warn('Weather API unavailable, using default cloud coverage:', e);
-                // Fallback: use a default or estimate based on time of day
-                cloudCoverage = 30; // Default 30% cloud coverage
-                return cloudCoverage;
+        // Simple cloud coverage estimation (no API needed)
+        function estimateCloudCoverage() {
+            // Estimate based on time of day and season
+            const now = new Date();
+            const hour = now.getHours();
+            const month = now.getMonth(); // 0-11
+            
+            // Base estimation: night time typically has clearer skies
+            let baseCoverage = 25; // Default 25%
+            
+            // Time-based adjustment
+            if (hour >= 20 || hour < 6) {
+                // Night time: clearer skies
+                baseCoverage = 15;
+            } else if (hour >= 6 && hour < 12) {
+                // Morning: moderate clouds
+                baseCoverage = 30;
+            } else if (hour >= 12 && hour < 18) {
+                // Afternoon: more clouds possible
+                baseCoverage = 35;
+            } else {
+                // Evening: clearing
+                baseCoverage = 25;
             }
-        }
-
-        // Alternative: Use a free weather API without key (limited)
-        async function fetchWeatherDataFree(lat, lng) {
-            try {
-                // Using Open-Meteo API (free, no key needed, CORS-friendly)
-                const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=cloud_cover&timezone=auto`;
-                
-                // Add timeout to prevent hanging
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-                
-                const resp = await fetch(url, { 
-                    signal: controller.signal,
-                    headers: {
-                        'Accept': 'application/json'
-                    }
-                });
-                
-                clearTimeout(timeoutId);
-                
-                if (!resp.ok) {
-                    throw new Error(`Weather API error: ${resp.status}`);
-                }
-                const data = await resp.json();
-                
-                // Extract cloud coverage from Open-Meteo format
-                // cloud_cover is 0-100 percentage
-                cloudCoverage = data.current?.cloud_cover || 0;
-                
-                console.log('Cloud coverage fetched:', cloudCoverage);
-                return cloudCoverage;
-            } catch (e) {
-                console.warn('Free weather API unavailable, using default:', e);
-                // Fallback: estimate based on time (night = less clouds visible)
-                const hour = new Date().getHours();
-                if (hour >= 20 || hour < 6) {
-                    cloudCoverage = 20; // Night time, assume less cloud interference
-                } else {
-                    cloudCoverage = 30; // Day time default
-                }
-                return cloudCoverage;
+            
+            // Seasonal adjustment (rough estimate)
+            // Winter months (Nov-Feb) tend to have more clouds
+            if (month >= 10 || month <= 1) {
+                baseCoverage += 10;
             }
+            
+            // Add some randomness for realism (±10%)
+            const variation = (Math.random() - 0.5) * 20;
+            cloudCoverage = Math.max(0, Math.min(100, baseCoverage + variation));
+            
+            return cloudCoverage;
         }
 
         // Geolocation
@@ -636,11 +604,15 @@
                 // Add timeout to geolocation
                 const geoOptions = {
                     enableHighAccuracy: false, // Faster, less accurate
-                    timeout: 10000, // 10 second timeout
-                    maximumAge: 60000 // Accept cached location up to 1 minute old
+                    timeout: 15000, // 15 second timeout
+                    maximumAge: 0 // Always get fresh location
                 };
                 
+                console.log('Requesting geolocation permission...');
+                
+                // Try to get position
                 navigator.geolocation.getCurrentPosition(async (position) => {
+                    console.log('Geolocation granted:', position.coords);
                     currentLat = position.coords.latitude;
                     currentLng = position.coords.longitude;
                     
@@ -660,39 +632,66 @@
                         locationEl.innerText = `${currentLat.toFixed(2)}, ${currentLng.toFixed(2)}`;
                     });
 
-                    // Fetch weather data for cloud coverage (don't block on failure)
-                    fetchWeatherDataFree(currentLat, currentLng).catch(err => {
-                        console.warn('Weather fetch failed, continuing without it:', err);
-                    });
+                    // Estimate cloud coverage (no API needed)
+                    estimateCloudCoverage();
                     
-                    // Update immediately, don't wait for weather or city name
+                    // Update immediately
                     updateMoonData();
-                    
                     // Update every 30 seconds for real-time illumination
                     setInterval(updateMoonData, 30000);
-                    
-                    // Update weather data every 5 minutes
-                    setInterval(async () => {
-                        try {
-                            await fetchWeatherDataFree(currentLat, currentLng);
-                            updateMoonData();
-                        } catch (err) {
-                            console.warn('Weather update failed:', err);
-                        }
-                    }, 300000); // 5 minutes
+                    // Re-estimate cloud coverage every 10 minutes (for time-based changes)
+                    setInterval(() => {
+                        estimateCloudCoverage();
+                        updateMoonData();
+                    }, 600000); // 10 minutes
                     
                 }, (err) => {
-                    console.warn('Geolocation error:', err);
-                    locationEl.innerText = "Location Access Denied";
+                    console.warn('Geolocation error:', err.code, err.message);
+                    
+                    // Show user-friendly error message
+                    if (err.code === 1) {
+                        locationEl.innerText = "Tap to enable location";
+                        // Make location text clickable to retry
+                        locationEl.style.cursor = 'pointer';
+                        locationEl.style.textDecoration = 'underline';
+                        locationEl.onclick = () => {
+                            locationEl.innerText = "Requesting...";
+                            initGeo();
+                        };
+                    } else if (err.code === 2) {
+                        locationEl.innerText = "Location unavailable";
+                    } else if (err.code === 3) {
+                        locationEl.innerText = "Location timeout - Tap to retry";
+                        locationEl.style.cursor = 'pointer';
+                        locationEl.onclick = () => {
+                            locationEl.innerText = "Requesting...";
+                            initGeo();
+                        };
+                    } else {
+                        locationEl.innerText = "Location Access Denied";
+                    }
+                    
+                    // Estimate cloud coverage even without location
+                    estimateCloudCoverage();
                     // Still update moon data even without location
                     updateMoonData();
                     setInterval(updateMoonData, 30000);
+                    setInterval(() => {
+                        estimateCloudCoverage();
+                        updateMoonData();
+                    }, 600000);
                 }, geoOptions);
             } else {
                 locationEl.innerText = "Geolocation not supported";
+                // Estimate cloud coverage
+                estimateCloudCoverage();
                 // Still update moon data even without location
                 updateMoonData();
                 setInterval(updateMoonData, 30000);
+                setInterval(() => {
+                    estimateCloudCoverage();
+                    updateMoonData();
+                }, 600000);
             }
         }
 
@@ -763,8 +762,29 @@
         // ============================================
 
         // Start
+        // Initialize cloud coverage estimation
+        estimateCloudCoverage();
         // Update moon data immediately (illumination works without location)
         updateMoonData();
+        
+        // Initialize geolocation
+        // Note: Some browsers (especially mobile) require user interaction
+        // If permission prompt doesn't appear, user may need to tap the screen first
+        initGeo();
+        
+        // Also try to request on first user interaction (tap/click)
+        let geoRequested = false;
+        const requestGeoOnInteraction = () => {
+            if (!geoRequested && currentLat === 0 && currentLng === 0) {
+                geoRequested = true;
+                console.log('User interaction detected, requesting geolocation...');
+                initGeo();
+            }
+        };
+        
+        // Try on various user interactions
+        document.addEventListener('click', requestGeoOnInteraction, { once: true });
+        document.addEventListener('touchstart', requestGeoOnInteraction, { once: true });
         // Update visibility and phase every 5 seconds for real-time feel
         setInterval(() => {
             const now = new Date();
@@ -807,7 +827,7 @@
             // Native scroll will handle it, this is just for potential future enhancements
         }, { passive: true });
         
-        initGeo();
+        // initGeo() already called above, don't call again
         initCompass();
 
     </script>
