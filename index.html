@@ -662,18 +662,24 @@
         // Device Orientation (Compass)
         function initCompass() {
             if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                // iOS 13+ requires permission
                 document.body.addEventListener('click', async () => {
                      try {
                         const response = await DeviceOrientationEvent.requestPermission();
                         if (response === 'granted') {
                             window.addEventListener('deviceorientation', handleOrientation);
+                            console.log('Device orientation permission granted');
+                        } else {
+                            console.warn('Device orientation permission denied');
                         }
                      } catch(e) {
-                         console.error(e);
+                         console.error('Device orientation permission error:', e);
                      }
                 }, { once: true });
             } else {
+                // Most Android and desktop browsers don't need permission
                 window.addEventListener('deviceorientation', handleOrientation);
+                console.log('Device orientation listener added (no permission needed)');
             }
         }
 
@@ -683,17 +689,18 @@
         function handleOrientation(event) {
             let heading = 0;
             
-            if (event.webkitCompassHeading) {
+            if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
+                // iOS Safari provides webkitCompassHeading
                 heading = event.webkitCompassHeading;
-            } else if (event.alpha) {
-                if (event.absolute) {
-                    heading = 360 - event.alpha;
-                } else {
-                    heading = 360 - event.alpha;
-                }
+            } else if (event.alpha !== undefined && event.alpha !== null) {
+                // Android and other browsers use alpha
+                heading = 360 - event.alpha;
+            } else {
+                // No valid heading data
+                return;
             }
             
-            // Update device heading for visibility calculation
+            // Update device heading for visibility calculation (always update)
             deviceHeading = heading;
             
             // Cancel previous animation frame if exists
@@ -731,8 +738,9 @@
         // Update moon data immediately (illumination works without location)
         updateMoonData();
         
-        // Initialize geolocation - simple direct call like the working version
+        // Initialize geolocation and compass - simple direct call like the working version
         initGeo();
+        initCompass();
         // Update visibility and phase every 5 seconds for real-time feel
         setInterval(() => {
             const now = new Date();
@@ -774,9 +782,6 @@
             touchEndY = e.changedTouches[0].clientY;
             // Native scroll will handle it, this is just for potential future enhancements
         }, { passive: true });
-        
-        // initGeo() already called above, don't call again
-        initCompass();
 
     </script>
 </body>
