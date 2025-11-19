@@ -26,19 +26,16 @@
             justify-content: center;
             align-items: center;
             overflow: hidden;
-            touch-action: pan-y; /* Enable vertical scrolling */
-            -webkit-overflow-scrolling: touch;
         }
 
         #app-container {
             width: 100%;
-            min-height: 100%;
+            height: 100%;
             max-width: 430px; /* Max width for iPhone Pro Max style */
             background-color: var(--bg-color);
             color: var(--text-gold);
             position: relative;
-            overflow-y: auto;
-            overflow-x: hidden;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -47,7 +44,6 @@
             box-shadow: 0 0 50px rgba(0,0,0,0.5);
             border: none; /* Remove border for full screen feel */
             flex-shrink: 0;
-            -webkit-overflow-scrolling: touch;
         }
 
         h1 {
@@ -142,8 +138,7 @@
             height: 100%;
             pointer-events: none;
             z-index: 20;
-            transition: transform 0.3s ease-out;
-            will-change: transform;
+            transition: transform 0.5s ease-out;
         }
 
         .red-pointer {
@@ -247,7 +242,7 @@
                 </div>
             </div>
             <div class="viewfinder-static flex justify-center items-center">
-                <!-- [数据] 月球视觉 -->
+                <!-- [数据] 月球视觉 (隐藏) -->
                 <div class="moon-visual" id="moon-visual"></div>
             </div>
         </div>
@@ -366,8 +361,6 @@
         
         let currentLat = 0;
         let currentLng = 0;
-        let deviceHeading = 0; // Device compass heading for visibility calculation
-        let cloudCoverage = 25; // Cloud coverage percentage (0-100)
         
         // Quotes - Only one English quote as requested
         const quotes = [
@@ -388,57 +381,13 @@
             return events;
         }
 
-        // ============================================
-        // 改进的可见度计算函数
-        // ============================================
-        function calculateVisibility(illumination, moonAzimuth, deviceHeading, cloudCoverage) {
-            // 1. 基础可见度（月亮被太阳照亮的百分比）
-            let baseVisibility = illumination.fraction;
-            
-            // 2. 角度修正系数（设备朝向与月亮方向的夹角）
-            // 计算设备朝向与月亮方向的夹角（0-180度）
-            let angleDiff = Math.abs(moonAzimuth - deviceHeading);
-            // 处理360度环绕问题
-            if (angleDiff > 180) {
-                angleDiff = 360 - angleDiff;
-            }
-            
-            // 角度修正函数：
-            // 0°（正对）→ 1.0
-            // 90°（垂直）→ 0.5
-            // 180°（背对）→ 0.0
-            // 使用余弦函数平滑插值
-            let angleCorrection = Math.cos((angleDiff * Math.PI) / 180);
-            // 将 -1 到 1 映射到 0 到 1
-            angleCorrection = (angleCorrection + 1) / 2;
-            
-            // 3. 云量修正系数
-            // 云量越高，可见度越低
-            // cloudCoverage: 0-100 (0=无云, 100=完全多云)
-            let cloudCorrection = 1 - (cloudCoverage / 100);
-            // 确保最小值不为0（即使完全多云，也能看到一点点）
-            cloudCorrection = Math.max(cloudCorrection, 0.1);
-            
-            // 4. 综合计算最终可见度
-            let finalVisibility = baseVisibility * angleCorrection * cloudCorrection;
-            
-            // 确保结果在合理范围内
-            finalVisibility = Math.max(0, Math.min(1, finalVisibility));
-            
-            return {
-                base: baseVisibility,
-                angleCorrection: angleCorrection,
-                cloudCorrection: cloudCorrection,
-                final: finalVisibility
-            };
-        }
-
         function updateMoonData() {
             const now = new Date();
             
-            // 1. 基础 Illumination & Phase (always update, even without location)
+            // 1. Illumination & Phase
             const illumination = SunCalc.getMoonIllumination(now);
-            const basePhasePercent = Math.round(illumination.fraction * 100);
+            const phasePercent = Math.round(illumination.fraction * 100);
+            illuminationEl.innerText = phasePercent;
             
             // Phase Name
             const phase = illumination.phase; 
@@ -455,26 +404,7 @@
             
             phaseNameEl.innerText = pName;
 
-            // 2. 计算改进后的可见度
-            let moonAzimuth = 0;
-            if (currentLat && currentLng) {
-                const pos = SunCalc.getMoonPosition(now, currentLat, currentLng);
-                moonAzimuth = (pos.azimuth * (180/Math.PI)) + 180;
-            }
-            
-            // 使用改进的可见度函数
-            const visibilityData = calculateVisibility(
-                illumination, 
-                moonAzimuth, 
-                deviceHeading, 
-                cloudCoverage
-            );
-            
-            // 显示最终可见度（四舍五入到整数）
-            const finalVisibilityPercent = Math.round(visibilityData.final * 100);
-            illuminationEl.innerText = finalVisibilityPercent;
-
-            // 3. Times Logic (Past/Future)
+            // 2. Times Logic (Past/Future)
             if (currentLat && currentLng) {
                 // Get events for yesterday, today, tomorrow to cover all bases
                 const yesterday = new Date(now); yesterday.setDate(yesterday.getDate() - 1);
@@ -536,7 +466,7 @@
                     statusTextEl.innerText = `MOON WILL ${action} IN ${timeString}`;
                 }
                 
-                // 4. Compass Logic (Red Pointer and Direction Text)
+                // 3. Compass Logic (Red Pointer and Direction Text)
                 const pos = SunCalc.getMoonPosition(now, currentLat, currentLng);
                 const moonAzimuth = (pos.azimuth * (180/Math.PI)) + 180;
                 
@@ -548,55 +478,7 @@
                 if(redPointerRotator) {
                     redPointerRotator.style.transform = `rotate(${moonAzimuth}deg)`;
                 }
-            } else {
-                // 即使没有位置，也更新可见度（只使用基础可见度和角度修正）
-                const visibilityData = calculateVisibility(
-                    illumination, 
-                    0, // 默认方位角
-                    deviceHeading, 
-                    cloudCoverage
-                );
-                const finalVisibilityPercent = Math.round(visibilityData.final * 100);
-                illuminationEl.innerText = finalVisibilityPercent;
             }
-        }
-
-        // Simple cloud coverage estimation (no API needed)
-        function estimateCloudCoverage() {
-            // Estimate based on time of day and season
-            const now = new Date();
-            const hour = now.getHours();
-            const month = now.getMonth(); // 0-11
-            
-            // Base estimation: night time typically has clearer skies
-            let baseCoverage = 25; // Default 25%
-            
-            // Time-based adjustment
-            if (hour >= 20 || hour < 6) {
-                // Night time: clearer skies
-                baseCoverage = 15;
-            } else if (hour >= 6 && hour < 12) {
-                // Morning: moderate clouds
-                baseCoverage = 30;
-            } else if (hour >= 12 && hour < 18) {
-                // Afternoon: more clouds possible
-                baseCoverage = 35;
-            } else {
-                // Evening: clearing
-                baseCoverage = 25;
-            }
-            
-            // Seasonal adjustment (rough estimate)
-            // Winter months (Nov-Feb) tend to have more clouds
-            if (month >= 10 || month <= 1) {
-                baseCoverage += 10;
-            }
-            
-            // Add some randomness for realism (±10%)
-            const variation = (Math.random() - 0.5) * 20;
-            cloudCoverage = Math.max(0, Math.min(100, baseCoverage + variation));
-            
-            return cloudCoverage;
         }
 
         // Geolocation
@@ -611,50 +493,23 @@
                         const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLng}&zoom=10&accept-language=en`;
                         const resp = await fetch(url, { headers: { 'User-Agent': 'MoonApp/1.0' } });
                         const data = await resp.json();
-                        const city = data.address?.city || data.address?.town || data.address?.village || "Unknown Location";
+                        const city = data.address.city || data.address.town || data.address.village || "Unknown Location";
+                        // const state = data.address.state || ""; // Often redundant in English view if city is known
+                        // Simplified location display
                         locationEl.innerText = `${city}`;
                     } catch (e) {
                         locationEl.innerText = `${currentLat.toFixed(2)}, ${currentLng.toFixed(2)}`;
                     }
 
-                    // Estimate cloud coverage (no API needed)
-                    estimateCloudCoverage();
-                    
-                    // Update immediately
                     updateMoonData();
-                    // Update every 30 seconds for real-time illumination
-                    setInterval(updateMoonData, 30000);
-                    // Re-estimate cloud coverage every 10 minutes (for time-based changes)
-                    setInterval(() => {
-                        estimateCloudCoverage();
-                        updateMoonData();
-                    }, 600000); // 10 minutes
+                    setInterval(updateMoonData, 60000); 
                     
                 }, (err) => {
                     locationEl.innerText = "Location Access Denied";
                     console.warn(err);
-                    
-                    // Estimate cloud coverage even without location
-                    estimateCloudCoverage();
-                    // Still update moon data even without location
-                    updateMoonData();
-                    setInterval(updateMoonData, 30000);
-                    setInterval(() => {
-                        estimateCloudCoverage();
-                        updateMoonData();
-                    }, 600000);
                 });
             } else {
                 locationEl.innerText = "Geolocation not supported";
-                // Estimate cloud coverage
-                estimateCloudCoverage();
-                // Still update moon data even without location
-                updateMoonData();
-                setInterval(updateMoonData, 30000);
-                setInterval(() => {
-                    estimateCloudCoverage();
-                    updateMoonData();
-                }, 600000);
             }
         }
 
@@ -676,7 +531,6 @@
             }
         }
 
-        let lastVisibilityUpdate = 0;
         function handleOrientation(event) {
             let heading = 0;
             
@@ -690,81 +544,13 @@
                 }
             }
             
-            // Update device heading for visibility calculation
-            deviceHeading = heading;
-            
-            // Update compass dial rotation (simple direct update like working version)
             dialRotator.style.transform = `rotate(-${heading}deg)`;
-            
-            // Throttle visibility updates (max once per 500ms) to avoid performance issues
-            const now = Date.now();
-            if (now - lastVisibilityUpdate > 500) {
-                updateMoonData();
-                lastVisibilityUpdate = now;
-            }
         }
 
-        // ============================================
-        // 可见度函数逻辑简述：
-        // ============================================
-        // 1. 使用 SunCalc.getMoonIllumination(now) 获取当前时刻的月亮光照数据
-        // 2. illumination.fraction 返回 0-1 之间的值，表示月亮被太阳照亮的比例
-        //    例如：0.5 = 50% 可见（半月），1.0 = 100% 可见（满月），0.0 = 0% 可见（新月）
-        // 3. 将 fraction * 100 并四舍五入，得到百分比显示（如 82%）
-        // 4. 这个值会实时更新，因为月亮位置相对于太阳是不断变化的
-        // 5. 注意：可见度是全局的，不需要用户位置信息，所以即使没有 GPS 也能显示
-        // ============================================
-
         // Start
-        // Initialize cloud coverage estimation
-        estimateCloudCoverage();
-        // Update moon data immediately (illumination works without location)
-        updateMoonData();
-        
-        // Initialize geolocation and compass - simple direct call like the working version
         initGeo();
         initCompass();
-        // Update visibility and phase every 5 seconds for real-time feel
-        setInterval(() => {
-            const now = new Date();
-            const illumination = SunCalc.getMoonIllumination(now);
-            
-            // Update phase name
-            const phase = illumination.phase; 
-            let pName = "New Moon";
-            if (phase > 0 && phase < 0.25) pName = "Waxing Crescent";
-            else if (phase >= 0.25 && phase < 0.5) pName = "Waxing Gibbous"; 
-            else if (phase >= 0.48 && phase <= 0.52) pName = "Full Moon";
-            else if (phase > 0.5 && phase < 0.75) pName = "Waning Gibbous";
-            else if (phase >= 0.75 && phase < 1) pName = "Waning Crescent";
-            
-            if (Math.abs(phase - 0.25) < 0.02) pName = "First Quarter";
-            if (Math.abs(phase - 0.75) < 0.02) pName = "Last Quarter";
-            if (Math.abs(phase - 0.0) < 0.02 || Math.abs(phase - 1.0) < 0.02) pName = "New Moon";
-            
-            phaseNameEl.innerText = pName;
-            
-            // Update visibility with all corrections
-            updateMoonData();
-        }, 5000); // Update every 5 seconds for more real-time feel
-        
-        // Touch scrolling enhancement for mobile
-        let touchStartY = 0;
-        let touchEndY = 0;
-        const appContainer = document.getElementById('app-container');
-        
-        appContainer.addEventListener('touchstart', (e) => {
-            touchStartY = e.touches[0].clientY;
-        }, { passive: true });
-        
-        appContainer.addEventListener('touchmove', (e) => {
-            // Allow native scrolling
-        }, { passive: true });
-        
-        appContainer.addEventListener('touchend', (e) => {
-            touchEndY = e.changedTouches[0].clientY;
-            // Native scroll will handle it, this is just for potential future enhancements
-        }, { passive: true });
+        updateMoonData();
 
     </script>
 </body>
