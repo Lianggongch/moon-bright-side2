@@ -590,13 +590,24 @@
         // Alternative: Use a free weather API without key (limited)
         async function fetchWeatherDataFree(lat, lng) {
             try {
-                // Using wttr.in (free, no API key needed, but rate limited)
-                // Note: wttr.in may have CORS issues, using alternative approach
-                // Try Open-Meteo API (free, no key needed)
+                // Using Open-Meteo API (free, no key needed, CORS-friendly)
                 const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=cloud_cover&timezone=auto`;
-                const resp = await fetch(url);
+                
+                // Add timeout to prevent hanging
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+                
+                const resp = await fetch(url, { 
+                    signal: controller.signal,
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                
+                clearTimeout(timeoutId);
+                
                 if (!resp.ok) {
-                    throw new Error('Weather API error');
+                    throw new Error(`Weather API error: ${resp.status}`);
                 }
                 const data = await resp.json();
                 
@@ -604,6 +615,7 @@
                 // cloud_cover is 0-100 percentage
                 cloudCoverage = data.current?.cloud_cover || 0;
                 
+                console.log('Cloud coverage fetched:', cloudCoverage);
                 return cloudCoverage;
             } catch (e) {
                 console.warn('Free weather API unavailable, using default:', e);
@@ -621,40 +633,61 @@
         // Geolocation
         function initGeo() {
             if ("geolocation" in navigator) {
+                // Add timeout to geolocation
+                const geoOptions = {
+                    enableHighAccuracy: false, // Faster, less accurate
+                    timeout: 10000, // 10 second timeout
+                    maximumAge: 60000 // Accept cached location up to 1 minute old
+                };
+                
                 navigator.geolocation.getCurrentPosition(async (position) => {
                     currentLat = position.coords.latitude;
                     currentLng = position.coords.longitude;
                     
-                    try {
-                        // Force English language response
-                        const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLng}&zoom=10&accept-language=en`;
-                        const resp = await fetch(url, { headers: { 'User-Agent': 'MoonApp/1.0' } });
-                        const data = await resp.json();
-                        const city = data.address.city || data.address.town || data.address.village || "Unknown Location";
-                        locationEl.innerText = `${city}`;
-                    } catch (e) {
-                        locationEl.innerText = `${currentLat.toFixed(2)}, ${currentLng.toFixed(2)}`;
-                    }
-
-                    // Fetch weather data for cloud coverage
-                    await fetchWeatherDataFree(currentLat, currentLng);
+                    // Update location text immediately
+                    locationEl.innerText = "Loading...";
                     
+                    // Fetch city name (don't block on this)
+                    fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLng}&zoom=10&accept-language=en`, { 
+                        headers: { 'User-Agent': 'MoonApp/1.0' }
+                    })
+                    .then(resp => resp.json())
+                    .then(data => {
+                        const city = data.address?.city || data.address?.town || data.address?.village || "Unknown Location";
+                        locationEl.innerText = `${city}`;
+                    })
+                    .catch(e => {
+                        locationEl.innerText = `${currentLat.toFixed(2)}, ${currentLng.toFixed(2)}`;
+                    });
+
+                    // Fetch weather data for cloud coverage (don't block on failure)
+                    fetchWeatherDataFree(currentLat, currentLng).catch(err => {
+                        console.warn('Weather fetch failed, continuing without it:', err);
+                    });
+                    
+                    // Update immediately, don't wait for weather or city name
                     updateMoonData();
+                    
                     // Update every 30 seconds for real-time illumination
                     setInterval(updateMoonData, 30000);
+                    
                     // Update weather data every 5 minutes
                     setInterval(async () => {
-                        await fetchWeatherDataFree(currentLat, currentLng);
-                        updateMoonData();
+                        try {
+                            await fetchWeatherDataFree(currentLat, currentLng);
+                            updateMoonData();
+                        } catch (err) {
+                            console.warn('Weather update failed:', err);
+                        }
                     }, 300000); // 5 minutes
                     
                 }, (err) => {
+                    console.warn('Geolocation error:', err);
                     locationEl.innerText = "Location Access Denied";
-                    console.warn(err);
                     // Still update moon data even without location
                     updateMoonData();
                     setInterval(updateMoonData, 30000);
-                });
+                }, geoOptions);
             } else {
                 locationEl.innerText = "Geolocation not supported";
                 // Still update moon data even without location
