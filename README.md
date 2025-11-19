@@ -13,11 +13,13 @@
 ## 📋 技术栈
 
 - **前端框架**：React + TypeScript
-- **样式**：Tailwind CSS
+- **样式**：内联样式（直接使用style属性）
 - **API服务**：
   - IPGeolocation Astronomy API - 获取月亮位置和月升月落时间
   - Visual Crossing Weather API - 获取云量数据
   - Nominatim API - 逆地理编码（坐标转城市名称）
+
+详细技术文档请参考 [TECHNICAL.md](./TECHNICAL.md)
 
 ## 🚀 快速开始
 
@@ -68,12 +70,15 @@ const VISUALCROSSING_API_KEY = 'your-api-key';
 
 ```
 月之亮面/
-├── index.tsx                 # 主React组件
-├── moonPhaseCalculator.ts    # 月相计算模块
-├── tailwind.config.js        # Tailwind配置
-├── tailwind.css             # Tailwind样式
-├── test-complete.html       # 完整功能测试页面
-└── README.md               # 项目说明文档
+├── index.html              # HTML入口，定义CSS变量
+├── main.tsx                # React入口文件
+├── index.tsx               # 主React组件
+├── moonPhaseCalculator.ts   # 月相计算模块
+├── vite.config.ts          # Vite配置
+├── tsconfig.json           # TypeScript配置
+├── package.json            # 项目依赖
+├── README.md               # 项目说明文档
+└── TECHNICAL.md            # 技术文档
 ```
 
 ## 🧮 算法说明

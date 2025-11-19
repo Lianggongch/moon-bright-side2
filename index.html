@@ -2,15 +2,34 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>月之亮面 - Moon Bright Side</title>
+    <script>
+      (function(doc, win) {
+        var docEl = doc.documentElement,
+          resizeEvt = 'orientationchange' in window ? 'orientationchange' : 'resize',
+          recalc = function() {
+            var clientWidth = docEl.clientWidth;
+            if (!clientWidth) return;
+            // 设计稿宽度：394px，设置 1rem = 100px (这样好计算)
+            // 换算：clientWidth / 394 * 100
+            var fontSize = 100 * (clientWidth / 394);
+            docEl.style.fontSize = fontSize + 'px';
+          };
+        // 立即执行一次，确保在React渲染前设置
+        recalc();
+        if (!doc.addEventListener) return;
+        win.addEventListener(resizeEvt, recalc, false);
+        doc.addEventListener('DOMContentLoaded', recalc, false);
+      })(document, window);
+    </script>
     <style>
         :root {
-            --e-3d-095: #E3D095;
-            --x-0e-2148: #0E2148;
-            --x-48-3aa-0: #483AA0;
-            --x-796-5c-1: #7965C1;
-            --text-font-family: 'Ubuntu Condensed', 'Helvetica', sans-serif;
+            --e-3d-095: rgba(227, 208, 149, 0.81);
+            --x-0e-2148: rgba(14, 33, 72, 1);
+            --x-48-3aa-0: rgba(72, 58, 160, 1);
+            --x-796-5c-1: rgba(121, 101, 193, 1);
+            --text-font-family: "Ubuntu Condensed-Regular", "Ubuntu Condensed", Helvetica, sans-serif;
         }
         * {
             margin: 0;
